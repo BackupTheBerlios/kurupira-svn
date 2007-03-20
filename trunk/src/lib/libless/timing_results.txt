@@ -1,0 +1,56 @@
+Relatório da Implementação do Emparelhamento de Tate:
+
+1. Biblioteca Aritmética e de Curvas Elípticas:
+	- OpenSSL em modo Montgomery (Coordenadas Projetivas)
+
+2. Curva Escolhida:
+	- Curva não supersingular y^2 = x^3 - 3x + B sobre um corpo primo GF(p) de 512 bits.
+	- Twist da curva y^2 = x^3 - 3x + B sobre o mesmo corpo primo GF(p) de 512 bits.
+	
+3, Parâmetros da curva:
+	- B = 680616598254368294015858653468400032278688648245162921457481212988487838266121706017410197802303768179517423581649948460652150151762287285211627769549950
+	- p = 11711338024714009669995700965425239711927177698599625717955894184681899877662     827977441218356846207573509472307873756662300754437232398452830779100780970303
+	- #E = 11711338024714009669995700965425239711927177698599625717955894184681899877662     611539569996945969293708404400344208273812850399351303651875378098503534075638
+ 	- t = 216437871221410876913865105071963665482849450355085928746577452680597246894666
+	- r = 2^159 + 2^17 + 1
+	
+4. Algoritmo de Emparelhamento:
+	- Emparelhamento de Tate com as seguintes otimizações:
+ 		o Eliminação de denominador;
+		o Cálculo da última potência com Seqüência de Lucas;
+		o Avaliação da linha embutida na duplicação e soma de pontos;
+		o Isomorfismo entre twist e curva sobre extensão quadrática, para evitar aritmética da curva na extensão.
+
+5. Plataforma de Execução:
+	- Sistema Operacional FreeBSD 6.1
+	- Processador Pentium 4 3.0 GHz FSB 800MHz Cache 1MB
+	- 512 M de memória RAM 33MHz
+	
+6. Metodologia
+	- Funções clock_gettime com resolução de nanossegundos.
+	
+7. Resultados (microssegundos):
+
+	- Aritmética na extensão quadrática:
+		o Quadrado:										12 microsec
+		o Inversão:										233 microsec
+		o Conjugado:									2 microsec
+		o Multiplicação:								17 microsec
+	
+	- Aritmética da Curva:
+		o Multiplicação do Gerador: 					1224 microsec
+		o Multiplicação de Ponto Arbitrário:			6432 microsec
+	
+	- Emparelhamento:
+		o Adição de pontos encapsulada:					139 microsec
+		o Duplicação de pontos encapsulada:				95 microsec
+		o Cálculo de Seqüência de Lucas:				2391 microsec
+		o Algoritmo do emparelhamento:					21700 microsec
+	
+	- Sistema Criptográfico AP05:
+		o Geração de Parâmetros do Sistema:				102970 microsec
+		o Geração de Chave Parcial:						72271 microsec
+		o Geração de Chave Pública:						1181 microsec
+		o Geração de Chave Privada:						10 microsec
+		o Encriptação:									101396 microsec
+		o Decriptação:									136523 microsec
