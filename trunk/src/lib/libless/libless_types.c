@@ -29,6 +29,8 @@
  * @ingroup libless
  */
  
+#include <stdio.h>
+ 
 #include "libless_types.h"
  
 /*============================================================================*/
@@ -84,12 +86,13 @@ void libless_secret_clean(libless_secret_t *secret) {
 }
 
 void libless_public_init(libless_public_t *public_key) {
-	*public_key = NULL;
+	public_key->pairing = NULL;
+	public_key->point = NULL;
 }
 
 void libless_public_clean(libless_public_t *public_key) {
-	BN_free(*public_key);
-	*public_key = NULL;
+	BN_free(public_key->pairing);
+	EC_POINT_free(public_key->point);
 }
 
 void libless_private_init(libless_private_t *private_key) {
@@ -114,4 +117,23 @@ void libless_signature_clean(libless_signature_t *signature) {
 	signature->image = NULL;
 	signature->hash = NULL;
 	signature->hash_len = 0;
+}
+
+void libless_ciphertext_init(libless_ciphertext_t *encrypted) {
+	encrypted->image = NULL;
+	encrypted->data = NULL;
+	encrypted->envelope = NULL;
+	encrypted->data_len = 0;
+	encrypted->env_len = 0;	
+}
+
+void libless_ciphertext_clean(libless_ciphertext_t *encrypted) {
+	EC_POINT_free(encrypted->image);
+	free(encrypted->data);
+	free(encrypted->envelope);
+	encrypted->image = NULL;
+	encrypted->data = NULL;
+	encrypted->envelope = NULL;
+	encrypted->data_len = 0;
+	encrypted->env_len = 0;
 }

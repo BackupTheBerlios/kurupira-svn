@@ -49,6 +49,8 @@
 	#define REASON_LUCAS				"error in lucas sequence computation"
 	#define REASON_EXPANSION			"error in pairing expansion"
 	#define REASON_COMPRESSION			"error in pairing compression"
+	#define REASON_CIPHER				"error in (de)cipher function"
+	#define REASON_DECRYPTION			"ciphertext can't be decrypted"
 	#define REASON_OPENSSL				"OpenSSL error"
 	/* @} */
 
