@@ -95,7 +95,7 @@
 	 * Type that represents encrypted data.
 	 */
 	typedef struct {
-		EC_POINT *image; /**< Image of the session key. */
+		unsigned char *image; /**< Image of the session key. */
 		int image_len; /**< Length of image in bytes. */
 		unsigned char *envelope; /**< Key encrypted with the session key. */
 		int env_len; /**< Length of envelope in bytes. */

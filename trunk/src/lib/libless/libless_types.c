@@ -93,6 +93,8 @@ void libless_public_init(libless_public_t *public_key) {
 void libless_public_clean(libless_public_t *public_key) {
 	BN_free(public_key->pairing);
 	EC_POINT_free(public_key->point);
+	public_key->pairing = NULL;
+	public_key->point = NULL;
 }
 
 void libless_private_init(libless_private_t *private_key) {
@@ -128,7 +130,7 @@ void libless_ciphertext_init(libless_ciphertext_t *encrypted) {
 }
 
 void libless_ciphertext_clean(libless_ciphertext_t *encrypted) {
-	EC_POINT_free(encrypted->image);
+	free(encrypted->image);
 	free(encrypted->data);
 	free(encrypted->envelope);
 	encrypted->image = NULL;

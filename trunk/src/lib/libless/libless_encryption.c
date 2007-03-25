@@ -271,6 +271,7 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	unsigned char *h2_bin = NULL;
 	unsigned char *envelope = NULL;
 	unsigned char *data = NULL;
+	unsigned char *image_bin = NULL;
 	int h1_len;
 	int h2_len;
 	int env_len;
@@ -299,6 +300,9 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	TRY(h1_bin = (unsigned char *)calloc(h1_len, sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
 	TRY(h2_bin = (unsigned char *)calloc(h2_len, sizeof(unsigned char)),
+			ERR(REASON_MEMORY));
+	TRY(image_bin = (unsigned char *)
+			calloc(POINT_SIZE_BYTES, sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
 	TRY(envelope = (unsigned char *)calloc(env_len, sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
@@ -355,7 +359,12 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	TRY(libless_cipher(env, data, &data_len, in, in_len, digest,
 					CIPHER_ENCRYPT), ERR(REASON_CIPHER));
 
-	encrypted->image = image;
+	TRY(EC_POINT_point2oct(parameters.group1, image,
+					POINT_CONVERSION_COMPRESSED, image_bin, POINT_SIZE_BYTES,
+					ctx), ERR(REASON_OPENSSL));
+
+	encrypted->image = image_bin;
+	encrypted->image_len = POINT_SIZE_BYTES;
 	encrypted->envelope = envelope;
 	encrypted->env_len = env_len;
 	encrypted->data = data;
@@ -376,6 +385,7 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 		libless_ciphertext_t encrypted, libless_private_t private_key,
 		libless_params_t parameters) {
 	EC_POINT *image = NULL;
+	EC_POINT *image2 = NULL;
 	BIGNUM *n = NULL;
 	BIGNUM *r = NULL;
 	BIGNUM *e = NULL;
@@ -401,6 +411,7 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(image = EC_POINT_new(parameters.group1), ERR(REASON_MEMORY));
+	TRY(image2 = EC_POINT_new(parameters.group1), ERR(REASON_MEMORY));	
 
 	h1_len = 2 * POINT_SIZE_BYTES + P_SIZE_BYTES;
 	h2_len = CIPHER_KEY_LENGTH + encrypted.data_len;
@@ -413,19 +424,23 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 	TRY(data = (unsigned char *)calloc(data_len, sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
 
+	/* Recover the point received with the ciphertext. */
+	TRY(EC_POINT_oct2point(parameters.group1, image, encrypted.image,
+					encrypted.image_len, ctx), ERR(REASON_OPENSSL));
+
 	/* Hash the image, the image of the secret and the pairing result. */
-	TRY(EC_POINT_point2oct(parameters.group1, encrypted.image,
+	TRY(EC_POINT_point2oct(parameters.group1, image,
 					POINT_CONVERSION_COMPRESSED, h1_bin, h1_len, ctx),
 			ERR(REASON_OPENSSL));
 
-	TRY(EC_POINT_mul(parameters.group1, image, NULL, encrypted.image,
+	TRY(EC_POINT_mul(parameters.group1, image2, NULL, image,
 					private_key.secret, ctx), ERR(REASON_OPENSSL));
 
-	TRY(EC_POINT_point2oct(parameters.group1, image,
+	TRY(EC_POINT_point2oct(parameters.group1, image2,
 					POINT_CONVERSION_COMPRESSED, h1_bin + POINT_SIZE_BYTES,
 					h1_len - POINT_SIZE_BYTES, ctx), ERR(REASON_OPENSSL));
 
-	TRY(libless_pairing(env, e, encrypted.image, private_key.partial, NULL,
+	TRY(libless_pairing(env, e, image, private_key.partial, NULL,
 					parameters, ctx), ERR(REASON_PAIRING));
 
 	TRY(BN_bn2bin(e, h1_bin + 2 * POINT_SIZE_BYTES), ERR(REASON_OPENSSL));
@@ -455,12 +470,12 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 					parameters.factor), ERR(REASON_HASH));
 
 	/* Multiply the generator by r. */
-	TRY(EC_POINT_copy(image, parameters.generator1), ERR(REASON_OPENSSL));
-	TRY(EC_POINT_mul(parameters.group1, image, r, NULL, NULL, ctx),
+	TRY(EC_POINT_copy(image2, parameters.generator1), ERR(REASON_OPENSSL));
+	TRY(EC_POINT_mul(parameters.group1, image2, r, NULL, NULL, ctx),
 			ERR(REASON_OPENSSL));
 
 	/* Compare the image received and the image computed. */
-	if (EC_POINT_cmp(parameters.group1, image, encrypted.image, ctx) != 0) {
+	if (EC_POINT_cmp(parameters.group1, image, image2, ctx) != 0) {
 		*out_len = 0;
 		ERR(REASON_DECRYPTION);
 	} else {
