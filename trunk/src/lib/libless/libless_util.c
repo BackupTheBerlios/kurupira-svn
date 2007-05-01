@@ -92,17 +92,20 @@ int libless_hash(libless_t *env, unsigned char *out,
 
 	int code;
 
-	 code = LIBLESS_ERROR;
+	code = LIBLESS_ERROR;
 
-	 EVP_MD_CTX_init(&ctx);
-	 TRY(EVP_DigestInit_ex(&ctx, HASH_FUNCTION, NULL), ERR(REASON_OPENSSL));
-	 TRY(EVP_DigestUpdate(&ctx, in, in_len), ERR(REASON_OPENSSL));
-	 TRY(EVP_DigestFinal_ex(&ctx, out, &out_len), ERR(REASON_OPENSSL));
+	EVP_MD_CTX_init(&ctx);
+	TRY(EVP_DigestInit_ex(&ctx, HASH_FUNCTION, NULL), ERR(REASON_OPENSSL));
+	TRY(EVP_DigestUpdate(&ctx, in, in_len), ERR(REASON_OPENSSL));
+	TRY(EVP_DigestFinal_ex(&ctx, out, &out_len), ERR(REASON_OPENSSL));
 
-	 code = LIBLESS_OK;
-	 end:EVP_MD_CTX_cleanup(&ctx);
-	 return code;
-} int libless_hash_to_integer(libless_t *env, BIGNUM *number, unsigned char *in,
+	code = LIBLESS_OK;
+end:
+	EVP_MD_CTX_cleanup(&ctx);
+	return code;
+}
+
+int libless_hash_to_integer(libless_t *env, BIGNUM *number, unsigned char *in,
 		int in_len, BIGNUM *p) {
 	BIGNUM *h = NULL;
 	BN_CTX *ctx = NULL;
@@ -113,30 +116,31 @@ int libless_hash(libless_t *env, unsigned char *out,
 	int code;
 	int i;
 
-	 code = LIBLESS_ERROR;
+	code = LIBLESS_ERROR;
 
-	 TRY(ctx = BN_CTX_new(), ERR(REASON_MEMORY));
+	TRY(ctx = BN_CTX_new(), ERR(REASON_MEMORY));
 
-	 BN_CTX_start(ctx);
+	BN_CTX_start(ctx);
 
-	 TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	 TRY(h_bin = (unsigned char *)
+	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(h_bin = (unsigned char *)
 			calloc((HASH_LENGTH + in_len), sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
 
 	/* Calculate the number of hash function interations. */
-	 limit = (3.0 / 5.0) * BN_num_bits(p);
+	// From IBCS #1, it could be: limit = (3.0 / 5.0) * BN_num_bits(p);
+	limit = 1 + BN_num_bytes(p) / HASH_LENGTH;
 
 	/* Fill number with zeroes. */
-	 TRY(BN_zero(number), ERR(REASON_OPENSSL));
+	TRY(BN_zero(number), ERR(REASON_OPENSSL));
 
 	/* Set the initial digest to zero. */
-	 memset(digest, 0, HASH_LENGTH);
+	memset(digest, 0, HASH_LENGTH);
 
 	/* Copy the byte vector to its position in the vector. This byte vector
 	 * never changes and can be copied only once. */
-	 memcpy(h_bin + HASH_LENGTH, in, in_len);
-	 h_len = HASH_LENGTH + in_len;
+	memcpy(h_bin + HASH_LENGTH, in, in_len);
+	h_len = HASH_LENGTH + in_len;
 
 	/* Iterate the hash function. */
 	for (i = 0; i < limit; i++) {
@@ -149,7 +153,8 @@ int libless_hash(libless_t *env, unsigned char *out,
 		TRY(BN_bin2bn(digest, HASH_LENGTH, h), ERR(REASON_OPENSSL));
 		TRY(BN_add(number, number, h), ERR(REASON_OPENSSL));
 		TRY(BN_mod(number, number, p, ctx), ERR(REASON_OPENSSL));
-	} code = LIBLESS_OK;
+	}
+	code = LIBLESS_OK;
 end:
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
@@ -166,23 +171,23 @@ int libless_hash_to_point(libless_t *env, EC_POINT *point,
 	int i, bit;
 	int code;
 
-	 code = LIBLESS_ERROR;
+	code = LIBLESS_ERROR;
 
-	 BN_CTX_start(ctx);
+	BN_CTX_start(ctx);
 
-	 TRY(x = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	 TRY(p = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	 TRY(n = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	 TRY(in_bin =
+	TRY(x = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(p = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(n = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(in_bin =
 			(unsigned char *)malloc((in_len + 1) * sizeof(unsigned char)),
 			ERR(REASON_MEMORY));
 
 	/* Get the prime field order. */
-	 TRY(EC_GROUP_get_curve_GFp(group, p, NULL, NULL, ctx),
+	TRY(EC_GROUP_get_curve_GFp(group, p, NULL, NULL, ctx),
 			ERR(REASON_CURVE_PARAMETERS));
 
-	 TRY(EC_GROUP_get_order(group, n, ctx), ERR(REASON_OPENSSL));
-	 i = 0;
+	TRY(EC_GROUP_get_order(group, n, ctx), ERR(REASON_OPENSSL));
+	i = 0;
 	do {
 		in_bin[0] = i++;
 		/* Copy the identifier to our byte vector. */
