@@ -434,7 +434,7 @@ int libless_verify(libless_t *env, int *verified,
 			ERR(REASON_OPENSSL));
 	TRY(libless_hash_to_integer(env, h2, h_bin, h_len, parameters.factor),
 			ERR(REASON_HASH));
-
+	
 	/* Compare the image received and the image computed. */
 	if (BN_cmp(h1, hash) == 0 || BN_cmp(h2, hash) == 0) {
 		*verified = 1;
