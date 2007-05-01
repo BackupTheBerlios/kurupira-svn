@@ -183,12 +183,9 @@ int libless_encryption_extract(libless_t *env, libless_partial_t *key,
 	BN_CTX_start(ctx);
 
 	TRY(*key = EC_POINT_new(parameters.group2), ERR(REASON_MEMORY));
-	INIT_TIMING();
-	TIMING_BEFORE();
+
 	TRY(libless_hash_to_point(env, *key, id, id_len, parameters.group2, ctx),
 			ERR(REASON_HASH));
-	TIMING_AFTER();
-	COMPUTE_TIMING(hash);
 
 	TRY(EC_POINT_mul(parameters.group2, *key, NULL, *key, master, ctx),
 			ERR(REASON_OPENSSL));
@@ -278,7 +275,6 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	int data_len;
 	int code;
 
-
 	code = LIBLESS_ERROR;
 
 	TRY(ctx = BN_CTX_new(), ERR(REASON_MEMORY));
@@ -322,11 +318,9 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	TRY(libless_hash_to_integer(env, r, h1_bin, h1_len, parameters.factor),
 			ERR(REASON_HASH));
 
-
 	/* Multiply the generator by r. */
 	TRY(EC_POINT_mul(parameters.group1, image, r, NULL, NULL, ctx),
 			ERR(REASON_OPENSSL));
-
 
 	/* Multiply the public key by r. */
 	TRY(EC_POINT_mul(parameters.group1, image_public, NULL, public_key.point, r,
