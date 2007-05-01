@@ -241,11 +241,11 @@ int libless_pairing_multiply(libless_t *env, BIGNUM *e1, BIGNUM *e2,
 	TRY(BN_mod_mul(r, qa1->x, qb->x, prime, ctx), ERR(REASON_OPENSSL));
 
 	TRY(BN_mod_mul(e1, qa1->y, qb->y, prime, ctx), ERR(REASON_OPENSSL));
-	TRY(BN_mod_sub(e1, r, e1, prime, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_mod_sub_quick(e1, r, e1, prime), ERR(REASON_OPENSSL));
 
 	if (e2 != NULL) {
 		TRY(BN_mod_mul(e2, qa2->y, qb->y, prime, ctx), ERR(REASON_OPENSSL));
-		TRY(BN_mod_sub(e2, r, e2, prime, ctx), ERR(REASON_OPENSSL));
+		TRY(BN_mod_sub_quick(e2, r, e2, prime), ERR(REASON_OPENSSL));
 	}
 
 	code = LIBLESS_OK;
@@ -771,10 +771,11 @@ int pairing_expand(libless_t *env, QUADRATIC *e1, QUADRATIC *e2,
 	TRY(BN_add(p, prime, one), ERR(REASON_OPENSSL));
 	TRY(BN_rshift(p, p, 2), ERR(REASON_OPENSSL));
 
-	/* Compute sqrt(1 - a^2) = a^((p+1)/4). */
+	/* Compute sqrt(1 - a^2) = (1 - a^2)^((p+1)/4). */
 	TRY(BN_mod_sqr(e1->y, pairing, prime, ctx), ERR(REASON_OPENSSL));
 	TRY(BN_mod_sub_quick(e1->y, one, e1->y, prime), ERR(REASON_OPENSSL));
-	TRY(BN_mod_exp(e1->y, e1->y, p, prime, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_mod_exp_mont(e1->y, e1->y, p, prime, ctx, NULL), ERR(REASON_OPENSSL));
+
 	TRY(BN_copy(e1->x, pairing), ERR(REASON_OPENSSL));
 
 	if (e2 != NULL) {
