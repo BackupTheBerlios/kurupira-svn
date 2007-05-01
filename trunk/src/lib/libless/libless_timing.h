@@ -61,7 +61,7 @@
 		_result += (_t1.tv_nsec - _t0.tv_nsec) / 1000;						\
 		printf("TIMING: %s time: %ld microsec\n", #FUNCTION, _result);
 		
-	#ifndef TIMING
+	#ifndef WITH_TIMING
 		#undef INIT_TIMING
 		#undef TIMING_BEFORE
 		#undef TIMING_AFTER
