@@ -145,28 +145,36 @@
 		PRINT(CONTEXT, CODE, REASON, ##__VA_ARGS__);						\
 		CALLBACK;
 
-	/**
-	 * Asserts the correct functioning of a function.
-	 * 
-	 * @param[in] FUNCTION  - the function to execute
-	 * @param[in] HANDLER   - the error handling function
-	 */
-	#define TRY(FUNCTION, HANDLER)											\
-	if (ERROR_CODE == (FUNCTION)) {											\
-		HANDLER;															\
-	}
-	
-	/**
-	 * Asserts a condition.
-	 * 
-	 * @param[in] CONDITION - the condition to verify
-	 * @param[in] HANDLER	- the error handling function
-	 */
-	#define ASSERT(CONDITION, HANDLER)										\
-	if (!(CONDITION)) {														\
-		HANDLER;															\
-	}
-	
+	#ifdef WITH_CHECKING
+		/**
+		 * Asserts the correct functioning of a function.
+		 * 
+		 * @param[in] FUNCTION  - the function to execute
+		 * @param[in] HANDLER   - the error handling function
+		 */
+		#define TRY(FUNCTION, HANDLER)										\
+			if (ERROR_CODE == (FUNCTION)) {									\
+				HANDLER;													\
+			}
+	#else
+		#define TRY(FUNCTION, HANDLER)			FUNCTION
+	#endif
+
+	#ifdef WITH_CHECKING
+		/**
+		 * Asserts a condition.
+		 * 
+		 * @param[in] CONDITION - the condition to verify
+		 * @param[in] HANDLER   - the error handling function
+		 */
+		#define ASSERT(CONDITION, HANDLER)									\
+			if (!(CONDITION)) {												\
+				HANDLER;													\
+			}
+	#else
+		#define ASSERT(CONDITION, HANDLER)		CONDITION
+	#endif
+
 	/**
 	 * Prints the error message with little information.
 	 * 
