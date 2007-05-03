@@ -221,7 +221,8 @@ int libless_pairing_multiply(libless_t *env, BIGNUM *e1, BIGNUM *e2,
 	int code;
 
 	code = LIBLESS_ERROR;
-
+	
+	BN_CTX_start(ctx);
 	TRY(qa1 = QD_new(), ERR(REASON_MEMORY));
 	TRY(qa2 = QD_new(), ERR(REASON_MEMORY));
 	TRY(qb = QD_new(), ERR(REASON_MEMORY));
@@ -741,6 +742,7 @@ static int tate_pairing_power(libless_t *env, BIGNUM *e, EC_POINT *p,
 
 	code = LIBLESS_OK;
 end:
+	EC_POINT_free(point);
 	BN_CTX_end(ctx);
 	BN_MONT_CTX_free(mctx);
 	QD_free(result);

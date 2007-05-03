@@ -83,9 +83,9 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 	TRY(b = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(n = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(p = BN_new(), ERR(REASON_MEMORY));
-	TRY(r = BN_new(), ERR(REASON_MEMORY));
-	TRY(e = BN_new(), ERR(REASON_MEMORY));
+	TRY(p = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(bt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(nt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(ht = BN_CTX_get(ctx), ERR(REASON_MEMORY));
@@ -117,7 +117,8 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 		do {
 			/* First, generate a random x value. */
 			TRY(BN_rand(x, P_SIZE_BITS, -1, 0), ERR(REASON_OPENSSL));
-		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0, ctx));
+		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0,
+						ctx));
 
 		/* Multiply the random point by the cofactor. */
 		TRY(EC_POINT_mul(group, g, NULL, g, h, ctx), ERR(REASON_OPENSSL));
@@ -142,7 +143,8 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 						ctx) || EC_POINT_is_at_infinity(twisted, gt));
 
 		/* Multiply the random point by the cofactor. */
-		TRY(EC_POINT_mul(twisted, gt, NULL, gt, ht, ctx), ERR(REASON_OPENSSL));
+		TRY(EC_POINT_mul(twisted, gt, NULL, gt, ht, ctx),
+				ERR(REASON_OPENSSL));
 
 	} while (EC_POINT_is_at_infinity(twisted, gt));
 
@@ -163,22 +165,29 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 				ERR(REASON_OPENSSL));
 	} while (BN_is_zero(*master_key));
 
-	parameters->group1 = group;
-	parameters->group2 = twisted;
-	parameters->public = public;
-	parameters->generator1 = g;
-	parameters->generator2 = gt;
-	parameters->prime = p;
-	parameters->factor = r;
+	TRY(parameters->group1 = EC_GROUP_dup(group), ERR(REASON_OPENSSL));
+	TRY(parameters->group2 = EC_GROUP_dup(twisted), ERR(REASON_OPENSSL));
+	TRY(parameters->public = EC_POINT_dup(public, group),
+			ERR(REASON_OPENSSL));
+	TRY(parameters->generator1 = EC_POINT_dup(g, group), ERR(REASON_OPENSSL));
+	TRY(parameters->generator2 = EC_POINT_dup(gt, twisted),
+			ERR(REASON_OPENSSL));
+	TRY(parameters->prime = BN_dup(p), ERR(REASON_OPENSSL));
+	TRY(parameters->factor = BN_dup(r), ERR(REASON_OPENSSL));
 
 	/* Compute the pairing. */
 	TRY(libless_pairing(env, e, g, gt, NULL, *parameters, ctx),
 			ERR(REASON_PAIRING));
 
-	parameters->pairing = e;
+	TRY(parameters->pairing = BN_dup(e), ERR(REASON_OPENSSL));
 
 	code = LIBLESS_OK;
 end:
+	EC_POINT_free(g);
+	EC_POINT_free(gt);
+	EC_POINT_free(public);
+	EC_GROUP_free(group);
+	EC_GROUP_free(twisted);
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	return code;
@@ -204,7 +213,8 @@ int libless_signature_extract(libless_t *env, libless_partial_t *key,
 	TRY(libless_hash_to_integer(env, h, id, id_len, parameters.factor),
 			ERR(REASON_HASH));
 
-	TRY(BN_mod_add_quick(h, h, master, parameters.factor), ERR(REASON_OPENSSL));
+	TRY(BN_mod_add_quick(h, h, master, parameters.factor),
+			ERR(REASON_OPENSSL));
 
 	TRY(BN_mod_inverse(h, h, parameters.factor, ctx), ERR(REASON_OPENSSL));
 
@@ -269,7 +279,7 @@ end:
 	return code;
 }
 
-int libless_sign(libless_t *env, libless_signature_t * signature,
+int libless_sign(libless_t *env, libless_signature_t *signature,
 		unsigned char *in, int in_len, unsigned char *id, int id_len,
 		libless_public_t public_key, libless_private_t private_key,
 		libless_params_t parameters) {
@@ -347,12 +357,14 @@ int libless_sign(libless_t *env, libless_signature_t * signature,
 	signature->image_len = POINT_SIZE_BYTES;
 
 	code = LIBLESS_OK;
-end:BN_CTX_end(ctx);
+end:
+	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	EC_POINT_free(image);
 	free(h_bin);
 	return code;
 }
+
 int libless_verify(libless_t *env, int *verified,
 		libless_signature_t signature, unsigned char *in, int in_len,
 		unsigned char *id, int id_len, libless_public_t public_key,
@@ -434,11 +446,12 @@ int libless_verify(libless_t *env, int *verified,
 			ERR(REASON_OPENSSL));
 	TRY(libless_hash_to_integer(env, h2, h_bin, h_len, parameters.factor),
 			ERR(REASON_HASH));
-	
+
 	/* Compare the image received and the image computed. */
 	if (BN_cmp(h1, hash) == 0 || BN_cmp(h2, hash) == 0) {
 		*verified = 1;
-	} else {
+	}
+	else {
 		*verified = 0;
 	}
 

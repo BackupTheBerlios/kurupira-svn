@@ -77,10 +77,10 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 
 	TRY(a = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(b = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(p = BN_new(), ERR(REASON_MEMORY));
+	TRY(p = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(n = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(r = BN_new(), ERR(REASON_MEMORY));
+	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(bt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(nt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(ht = BN_CTX_get(ctx), ERR(REASON_MEMORY));
@@ -112,7 +112,8 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 		do {
 			/* First, generate a random x value. */
 			TRY(BN_rand(x, P_SIZE_BITS, -1, 0), ERR(REASON_OPENSSL));
-		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0, ctx));
+		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0,
+						ctx));
 
 		/* Multiply the random point by the cofactor. */
 		TRY(EC_POINT_mul(group, g, NULL, g, h, ctx), ERR(REASON_OPENSSL));
@@ -155,16 +156,21 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 
 	} while (BN_is_zero(*master_key));
 
-	parameters->group1 = group;
-	parameters->group2 = twisted;
-	parameters->public = public;
-	parameters->prime = p;
-	parameters->generator1 = g;
-	parameters->factor = r;
+	TRY(parameters->group1 = EC_GROUP_dup(group), ERR(REASON_OPENSSL));
+	TRY(parameters->group2 = EC_GROUP_dup(twisted), ERR(REASON_OPENSSL));
+	TRY(parameters->public = EC_POINT_dup(public, group),
+			ERR(REASON_OPENSSL));
+	TRY(parameters->generator1 = EC_POINT_dup(g, group), ERR(REASON_OPENSSL));
+	TRY(parameters->prime = BN_dup(p), ERR(REASON_OPENSSL));
+	TRY(parameters->factor = BN_dup(r), ERR(REASON_OPENSSL));
 
 	code = LIBLESS_OK;
 end:
+	EC_POINT_free(g);
 	EC_POINT_free(gt);
+	EC_POINT_free(public);	
+	EC_GROUP_free(group);
+	EC_GROUP_free(twisted);
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	return code;
@@ -323,8 +329,8 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 			ERR(REASON_OPENSSL));
 
 	/* Multiply the public key by r. */
-	TRY(EC_POINT_mul(parameters.group1, image_public, NULL, public_key.point, r,
-					ctx), ERR(REASON_OPENSSL));
+	TRY(EC_POINT_mul(parameters.group1, image_public, NULL, public_key.point,
+					r, ctx), ERR(REASON_OPENSSL));
 
 	/* Compute the pairing. */
 	TRY(libless_pairing(env, e, parameters.public, id_point, r, parameters,
@@ -343,8 +349,8 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 	TRY(libless_hash(env, digest, h2_bin, h2_len), ERR(REASON_HASH));
 
 	/* Encrypt the key with the hash of the above. */
-	TRY(libless_cipher(env, envelope, &env_len, key, CIPHER_KEY_LENGTH, digest,
-					CIPHER_ENCRYPT), ERR(REASON_CIPHER));
+	TRY(libless_cipher(env, envelope, &env_len, key, CIPHER_KEY_LENGTH,
+					digest, CIPHER_ENCRYPT), ERR(REASON_CIPHER));
 
 	/* Hash the key. */
 	TRY(libless_hash(env, digest, key, CIPHER_KEY_LENGTH), ERR(REASON_HASH));
@@ -366,6 +372,7 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 
 	code = LIBLESS_OK;
 end:
+	EC_POINT_free(image);
 	EC_POINT_free(id_point);
 	EC_POINT_free(image_public);
 	BN_CTX_end(ctx);
@@ -384,7 +391,7 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 	BIGNUM *r = NULL;
 	BIGNUM *e = NULL;
 	BN_CTX *ctx = NULL;
-	unsigned char key[CIPHER_KEY_LENGTH];
+	unsigned char key[CIPHER_KEY_LENGTH + CIPHER_LENGTH];
 	unsigned char digest[HASH_LENGTH];
 	unsigned char *h1_bin = NULL;
 	unsigned char *h2_bin = NULL;
@@ -405,7 +412,7 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(image = EC_POINT_new(parameters.group1), ERR(REASON_MEMORY));
-	TRY(image2 = EC_POINT_new(parameters.group1), ERR(REASON_MEMORY));	
+	TRY(image2 = EC_POINT_new(parameters.group1), ERR(REASON_MEMORY));
 
 	h1_len = 2 * POINT_SIZE_BYTES + P_SIZE_BYTES;
 	h2_len = CIPHER_KEY_LENGTH + encrypted.data_len;
@@ -472,13 +479,16 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 	if (EC_POINT_cmp(parameters.group1, image, image2, ctx) != 0) {
 		*out_len = 0;
 		ERR(REASON_DECRYPTION);
-	} else {
+	}
+	else {
 		memcpy(out, data, data_len);
 		*out_len = data_len;
 	}
 
 	code = LIBLESS_OK;
 end:
+	EC_POINT_free(image);
+	EC_POINT_free(image2);
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	free(h1_bin);

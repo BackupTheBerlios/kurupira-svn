@@ -74,5 +74,7 @@ void libless_init(libless_t *env) {
 void libless_clean(libless_t *env) {
 	RAND_cleanup();
 
+	ERR_clear_error();
+	ERR_remove_state(0);
 	ERR_free_strings();
 }

@@ -32,44 +32,52 @@
 #ifndef _LIBLESS_TIMING_H_
 	#define _LIBLESS_TIMING_H_
 
+	#ifdef __linux__
+		#define CLOCK	CLOCK_PROCESS_CPUTIME_ID
+	#endif
+
+	#ifdef FREEBSD
+		#define CLOCK	CLOCK_PROF
+	#endif
+
 	/**
 	 * Initializes the timing support.
 	 */
-	#define INIT_TIMING()													\
-		struct timespec _t0, _t1;											\
-		long int _result;
+	#define TIMING_INIT()												\
+			struct timespec _t0, _t1;									\
+			long int _result;
 
 	/**
 	 * Records the timing before execution.
 	 */
-	#define TIMING_BEFORE()													\
-		clock_gettime(CLOCK_PROF, &_t0);
+	#define TIMING_BEFORE()											\
+			clock_gettime(CLOCK, &_t0);
 
 	/**
 	 * Records the timing after execution.
 	 */
-	#define TIMING_AFTER()													\
-		clock_gettime(CLOCK_PROF, &_t1);
+	#define TIMING_AFTER()											\
+			clock_gettime(CLOCK, &_t1);
 
 	/**
 	 * Computes the timing and prints the info in microseconds.
 	 * 
 	 * @param[in] FUNCTION     - the function executed.
 	 */
-	#define COMPUTE_TIMING(FUNCTION)										\
+	#define TIMING_COMPUTE(FUNCTION)										\
 		_result = ((long)_t1.tv_sec - (long)_t0.tv_sec) * 1000000;			\
 		_result += (_t1.tv_nsec - _t0.tv_nsec) / 1000;						\
 		printf("TIMING: %s time: %ld microsec\n", #FUNCTION, _result);
-		
+
 	#ifndef WITH_TIMING
-		#undef INIT_TIMING
+		#undef TIMING_INIT
 		#undef TIMING_BEFORE
 		#undef TIMING_AFTER
-		#undef COMPUTE_TIMING
-		#define INIT_TIMING() /* empty */
+		#undef TIMING_COMPUTE
+		#define TIMING_INIT() /* empty */
 		#define TIMING_BEFORE() /* empty */
 		#define TIMING_AFTER() /* empty */
-		#define COMPUTE_TIMING(FUNCTION) /* empty */
+		#define TIMING_COMPUTE(FUNCTION) /* empty */
 	#endif
 
-#endif /* !_LIBLESS_ERR_H_ */
+#endif /* !_LIBLESS_TIMING_H_ */
