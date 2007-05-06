@@ -7,7 +7,7 @@ INC=${SRC:.c=.h}
 OPENSSL_PATH=/usr
 
 CC=gcc
-CFLAGS=-Wall -pipe -fPIC -std=c99 -pedantic -I $(OPENSSL_PATH)/include -I../liberror -DWITH_TIMING -DWITH_DEBUG -ggdb -DWITH_CHECKING -D_POSIX_C_SOURCE=199309L
+CFLAGS=-Wall -pipe -fPIC -std=c99 -pedantic -I $(OPENSSL_PATH)/include -I../liberror -DWITH_TIMING -DWITH_DEBUG -ggdb -DWITH_CHECKING -D_POSIX_C_SOURCE=199309L -DWITH_SUPERSINGULAR
 LDFLAGS=-L $(OPENSSL_PATH) -lcrypto -L ../liberror -ggdb
 
 all: $(OBJ) $(INC) Makefile
@@ -17,6 +17,12 @@ test: $(INC) Makefile
 	$(CC) $(CFLAGS) $(LDFLAGS) libless_test_signature.c -o libless_test_signature -L. -lless -lerror -lrt
 	$(CC) $(CFLAGS) $(LDFLAGS) libless_test_encryption.c -o libless_test_encryption -L. -lless -lerror -lrt
 	$(CC) $(CFLAGS) $(LDFLAGS) libless_test_aggregate.c -o libless_test_aggregate -L. -lless -lerror -lrt
+
+check:
+	. env.sh
+	./libless_test_encryption | grep Test
+	./libless_test_signature | grep Test
+	./libless_test_aggregate
 
 clean:
 	rm -rf *.o *.a *.so

@@ -50,7 +50,7 @@
  * Exponent of the last exponentiation in the Tate Pairing computation
  * (\f$ \frac{p + 1}_{r} \f$).
  */
-#define LAST_POWER	P_OVER_Q
+#define LAST_POWER	P_OVER_R
 
 /** Computes the power of a unary field element from the lucas sequence
  * laddering algorithm.
