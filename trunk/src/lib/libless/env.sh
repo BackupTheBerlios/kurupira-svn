@@ -1,1 +1,1 @@
-export LD_LIBRARY_PATH=".:../../../../../openssl-0.9.8d:../liberror"
+export LD_LIBRARY_PATH=".:../liberror"
