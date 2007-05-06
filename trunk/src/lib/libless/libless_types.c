@@ -28,11 +28,13 @@
  * @version $Header$
  * @ingroup libless
  */
- 
+
 #include <stdio.h>
- 
+
 #include "libless_types.h"
- 
+#include "libless.h"
+#include "libless_error.h"
+
 /*============================================================================*/
 /* Public definitions                                                         */
 /*============================================================================*/
@@ -126,7 +128,7 @@ void libless_ciphertext_init(libless_ciphertext_t *encrypted) {
 	encrypted->data = NULL;
 	encrypted->envelope = NULL;
 	encrypted->data_len = 0;
-	encrypted->env_len = 0;	
+	encrypted->env_len = 0;
 }
 
 void libless_ciphertext_clean(libless_ciphertext_t *encrypted) {
@@ -138,4 +140,30 @@ void libless_ciphertext_clean(libless_ciphertext_t *encrypted) {
 	encrypted->envelope = NULL;
 	encrypted->data_len = 0;
 	encrypted->env_len = 0;
+}
+
+int libless_aggregate_init(libless_aggregate_t *aggregate, int number) {
+	int code = LIBLESS_ERROR;
+	int i;
+
+	TRY(aggregate->signature = (libless_signature_t *)
+			calloc(number, sizeof(libless_signature_t)), goto end);
+
+	for (i = 0; i < number; i++)
+		libless_signature_init(&(aggregate->signature[i]));
+
+	aggregate->signatures = number;
+
+	code = LIBLESS_OK;
+end:
+	return code;
+}
+
+void libless_aggregate_clean(libless_aggregate_t *aggregate) {
+	int i;
+
+	for (i = 0; i < aggregate->signatures; i++)
+		libless_signature_clean(&(aggregate->signature[i]));
+	free(aggregate->signature);
+	aggregate->signatures = 0;
 }

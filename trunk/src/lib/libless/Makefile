@@ -4,10 +4,10 @@ SRC=libless.c libless_types.c libless_quadratic.c libless_pairing.c libless_util
 OBJ=${SRC:.c=.o}
 INC=${SRC:.c=.h}
 
-OPENSSL_PATH=/home/iamscared/projects/openssl-0.9.8e
+OPENSSL_PATH=/usr
 
 CC=gcc
-CFLAGS=-O2 -Wall -pipe -fPIC -std=c99 -pedantic -I $(OPENSSL_PATH)/include -I../liberror -DWITH_TIMING -DWITH_DEBUG -ggdb -DWITH_CHECKING -D_POSIX_C_SOURCE=199309L
+CFLAGS=-Wall -pipe -fPIC -std=c99 -pedantic -I $(OPENSSL_PATH)/include -I../liberror -DWITH_TIMING -DWITH_DEBUG -ggdb -DWITH_CHECKING -D_POSIX_C_SOURCE=199309L
 LDFLAGS=-L $(OPENSSL_PATH) -lcrypto -L ../liberror -ggdb
 
 all: $(OBJ) $(INC) Makefile

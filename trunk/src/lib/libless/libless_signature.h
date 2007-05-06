@@ -120,7 +120,7 @@
 		libless_params_t parameters);
 
 	/**
-	 * Deciphers a cryptogram with the user private key.
+	 * Verifies a signature with the user public key.
 	 * 
 	 * @param[in,out] env       - the library context
 	 * @param[out] verified     - a boolean indicating if the signature is valid

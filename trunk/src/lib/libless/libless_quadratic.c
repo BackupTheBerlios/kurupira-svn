@@ -33,7 +33,7 @@
 
 #include "libless.h"
 #include "libless_quadratic.h"
-#include "libless_err.h"
+#include "libless_error.h"
 
 /*============================================================================*/
 /* Public definitions                                                         */

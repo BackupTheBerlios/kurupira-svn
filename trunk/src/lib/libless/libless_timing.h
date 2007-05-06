@@ -65,9 +65,20 @@
 	 * @param[in] FUNCTION     - the function executed.
 	 */
 	#define TIMING_COMPUTE(FUNCTION)										\
-		_result = ((long)_t1.tv_sec - (long)_t0.tv_sec) * 1000000;			\
+		_result = ((long)_t1.tv_sec - (long)_t0.tv_sec) * 1000000;		\
 		_result += (_t1.tv_nsec - _t0.tv_nsec) / 1000;						\
 		printf("TIMING: %s time: %ld microsec\n", #FUNCTION, _result);
+
+	/**
+	 * Computes the timing of n executions and prints the info in microseconds.
+	 * 
+	 * @param[in] FUNCTION     - the function executed.
+	 */
+	#define TIMING_COMPUTE_N(FUNCTION,TIMES)								\
+		_result = ((long)_t1.tv_sec - (long)_t0.tv_sec) * 1000000;		\
+		_result += (_t1.tv_nsec - _t0.tv_nsec) / 1000;						\
+		printf("TIMING: %s time: %ld microsec\n", #FUNCTION, _result/TIMES);
+
 
 	#ifndef WITH_TIMING
 		#undef TIMING_INIT

@@ -39,7 +39,7 @@
 
 #include "libless.h"
 #include "libless_quadratic.h"
-#include "libless_err.h"
+#include "libless_error.h"
 #include "libless_timing.h"
 
 /*============================================================================*/

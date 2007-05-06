@@ -104,6 +104,14 @@
 	} libless_ciphertext_t;
 
 	/**
+	 * Type that represents a set of aggregated signatures;
+	 */
+	typedef struct {
+		libless_signature_t *signature; /**< Array of aggregate signatures. */
+		int signatures; /**< Number of aggregated signatures. */
+	} libless_aggregate_t;
+
+	/**
 	 * Initializes a set of public parameters.
 	 * 
 	 * @param[out] parameters       - the parameters to initialize
@@ -192,27 +200,41 @@
 	 * 
 	 * @param[out] signature        - the signature to initialize
 	 */
-	void libless_signature_init(libless_signature_t * signature);
+	void libless_signature_init(libless_signature_t *signature);
 
 	/**
 	 * Frees the resources associated with a signature.
 	 * 
 	 * @param[in,out] signature     - the signature to free
 	 */
-	void libless_signature_clean(libless_signature_t * signature);
+	void libless_signature_clean(libless_signature_t *signature);
 
 	/**
 	 * Initializes a cryptogram.
 	 * 
-	 * @param[out] encrypted		- the cryptogram to initialize
+	 * @param[out] encrypted        - the cryptogram to initialize
 	 */
 	void libless_ciphertext_init(libless_ciphertext_t *encrypted);
 
 	/**
 	 * Frees the resources associated with a cryptogram.
 	 * 
-	 * @param[in,out] encrypted		- the cryptogram to free
+	 * @param[in,out] encrypted     - the cryptogram to free
 	 */
 	void libless_ciphertext_clean(libless_ciphertext_t *encrypted);
 
-#endif /* !_LIBLESS_TYPES_H_ */
+	/**
+	 * Initializes an aggregate signature.
+	 * 
+	 * @param[in,out] aggregate		- the aggregate signature to initialize
+	 * @returns LIBLESS_OK if no error occurs, LIBLESS_ERROR otherwise.
+	 */
+	int libless_aggregate_init(libless_aggregate_t *aggregate, int number);
+	
+	/**
+	 * Frees the resources associated with an aggregate signature.
+	 * 
+	 * @param[in,out]				the aggregate signature to free 
+	 */
+	void libless_aggregate_clean(libless_aggregate_t *aggregate);
+		#endif /* !_LIBLESS_TYPES_H_ */
