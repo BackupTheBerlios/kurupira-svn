@@ -28,8 +28,8 @@
  * @version $Header$
  * @ingroup libless
  */
- 
-#include <stdlib.h> 
+
+#include <stdlib.h>
 
 #include "libless.h"
 #include "libless_quadratic.h"
@@ -58,6 +58,25 @@ end:
 	return a;
 }
 
+QUADRATIC *QD_dup(QUADRATIC *a) {
+	QUADRATIC *b = NULL;
+	int code;
+
+	code = LIBLESS_ERROR;
+
+	TRY(b = (QUADRATIC *)malloc(sizeof(QUADRATIC)), return NULL);
+	TRY(b->x = BN_dup(a->x), goto end);
+	TRY(b->y = BN_dup(a->y), goto end);
+
+	code = LIBLESS_OK;
+end:
+	if (code != LIBLESS_OK) {
+		QD_free(b);
+		b = NULL;
+	}
+	return b;
+}
+
 int QD_sqr(QUADRATIC *r, QUADRATIC *a, BIGNUM *p, BN_MONT_CTX *mctx,
 		BN_CTX *ctx) {
 	BIGNUM *t1 = NULL;
@@ -80,7 +99,7 @@ int QD_sqr(QUADRATIC *r, QUADRATIC *a, BIGNUM *p, BN_MONT_CTX *mctx,
 
 	/* Compute r_x = (a_x + a_y)*(a_x - a_y). */
 	TRY(BN_mod_mul_montgomery(r->x, t1, t2, mctx, ctx), goto end);
-	
+
 	/* Compute r_y = 2*a_x*a_y. */
 	TRY(BN_mod_lshift1_quick(r->y, r->y, p), goto end);
 
@@ -147,7 +166,8 @@ int QD_conj(QUADRATIC *r, QUADRATIC *a, BIGNUM *p, BN_CTX *ctx) {
 
 	if (a == r) {
 		TRY(BN_mod_sub_quick(r->y, p, r->y, p), goto end);
-	} else {
+	}
+	else {
 		TRY(BN_copy(r->x, a->x), goto end);
 		TRY(BN_mod_sub_quick(r->y, p, a->y, p), goto end);
 	}
@@ -182,19 +202,15 @@ int QD_inv(QUADRATIC *r, QUADRATIC *a, BIGNUM *p, BN_MONT_CTX *mctx,
 	TRY(BN_mod_add_quick(t3, t3, t4, p), goto end);
 
 	/* t3 = t3^(-1). */
+	TRY(BN_from_montgomery(t3, t3, mctx, ctx), goto end);
 	TRY(BN_mod_inverse(t3, t3, p, ctx), goto end);
+	TRY(BN_to_montgomery(t3, t3, mctx, ctx), goto end);
 
 	TRY(BN_copy(t2->x, t3), goto end);
 	TRY(BN_zero(t2->y), goto end);
 
-	/* If a is in Montgomery form aR mod p, this will compute (aR)^(-1) mod p.*/
+	/* If a is in Montgomery form aR mod p, this will compute (aR)^(-1) mod p. */
 	TRY(QD_mul(r, t1, t2, p, mctx, ctx), goto end);
-
-	/* Correct Montgomery form (a^(-1)R mod p. */
-	TRY(BN_to_montgomery(r->x, r->x, mctx, ctx), goto end);
-	TRY(BN_to_montgomery(r->x, r->x, mctx, ctx), goto end);
-	TRY(BN_to_montgomery(r->y, r->y, mctx, ctx), goto end);
-	TRY(BN_to_montgomery(r->y, r->y, mctx, ctx), goto end);
 
 	code = LIBLESS_OK;
 end:
@@ -206,6 +222,23 @@ end:
 
 int QD_is_zero(QUADRATIC *a) {
 	return (BN_is_zero(a->x) && BN_is_zero(a->y));
+}
+
+int QD_copy(QUADRATIC *to, QUADRATIC *from) {
+	int code;
+	
+	code = LIBLESS_ERROR;
+	
+	TRY(BN_copy(to->x, from->x), goto end);
+	TRY(BN_copy(to->y, from->y), goto end);
+	
+	code = LIBLESS_OK;
+end:
+	return code;
+}
+
+int QD_equal(QUADRATIC *a, QUADRATIC *b) {
+	return (BN_cmp(a->x, b->x) == 0 && BN_cmp(a->y, b->y) == 0);
 }
 
 void QD_free(QUADRATIC *a) {

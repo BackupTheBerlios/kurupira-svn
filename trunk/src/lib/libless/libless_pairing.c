@@ -39,6 +39,7 @@
 
 #include "libless.h"
 #include "libless_quadratic.h"
+#include "libless_types.h"
 #include "libless_error.h"
 #include "libless_timing.h"
 
@@ -56,7 +57,8 @@
  * laddering algorithm.
  * 
  * @param[in,out] env       - the library context
- * @param[out] r            - the resulting field element
+ * @param[out] r1           - the result of V_n(a)
+ * @param[out] r2           - the result of U_n(a), can be NULL
  * @param[in] a             - the basis
  * @param[in] n             - the power
  * @param[in] p             - the prime field order
@@ -64,8 +66,8 @@
  * @param[in] ctx           - the OpenSSL context
  * @returns  LIBLESS_OK if no error occurs, LIBLESS_ERROR otherwise.
  */
-static int lucas_sequence(libless_t *env, BIGNUM *r, BIGNUM *a, BIGNUM *n,
-		BIGNUM *p, BN_MONT_CTX *mctx, BN_CTX *ctx);
+static int lucas_sequence(libless_t *env, BIGNUM *r1, BIGNUM *r2, BIGNUM *a,
+		BIGNUM *n, BIGNUM *p, BN_MONT_CTX *mctx, BN_CTX *ctx);
 
 /**
  * Doubles a point and avaliates the contribution of the doubling using a second
@@ -104,11 +106,13 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 		BN_CTX *ctx);
 
 /**
- * Computes a power of a compressed pairing of two elliptic curve points, that
- * is, \f$ e(P, Q)^{r} \f$. This is a high-level version of the function.
+ * Computes a power of a pairing of two elliptic curve points, that
+ * is, \f$ e(P, Q)^{r} \f$. If e2 is NULL, then the result is returned in
+ * compressed form.
  * 
  * @param[in,out] env       - the library context
- * @param[out] e            - the result of the pairing computation
+ * @param[out] e            - the first component of the result
+ * @param[out] e2           - the second component of the result
  * @param[in] p             - the first point
  * @param[in] xq            - the x-coordinate of the second point
  * @param[in] yq            - the y-coordinate of the second point
@@ -118,9 +122,9 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
  * @param[in] ctx           - the OpenSSL context
  * @returns LIBLESS_OK if no error occurs, LIBLESS_ERROR otherwise.
  */
-static int tate_pairing_power(libless_t *env, BIGNUM *e, EC_POINT *p,
-		BIGNUM *xq, BIGNUM *yq, BIGNUM *r, EC_GROUP *group, BIGNUM *factor,
-		BN_CTX *ctx);
+static int tate_pairing_power(libless_t *env, BIGNUM *e1, BIGNUM *e2,
+		EC_POINT *p, BIGNUM *xq, BIGNUM *yq, BIGNUM *r, EC_GROUP *group,
+		BIGNUM *factor, BN_CTX *ctx);
 
 /**
  * Expands the compressed pairing to a quadratic extension element.
@@ -140,8 +144,9 @@ int pairing_expand(libless_t *env, QUADRATIC *e1, QUADRATIC *e2,
 /* Public definitions                                                         */
 /*============================================================================*/
 
-int libless_pairing(libless_t *env, BIGNUM *e, EC_POINT *p, EC_POINT *q,
-		BIGNUM *exponent, libless_params_t parameters, BN_CTX *ctx) {
+int libless_pairing(libless_t *env, QUADRATIC *e, EC_POINT *p,
+		EC_POINT *q, BIGNUM *exponent, libless_params_t parameters,
+		BN_CTX *ctx) {
 	BIGNUM *xq = NULL;
 	BIGNUM *yq = NULL;
 	int code;
@@ -155,8 +160,9 @@ int libless_pairing(libless_t *env, BIGNUM *e, EC_POINT *p, EC_POINT *q,
 	TRY(EC_POINT_get_affine_coordinates_GFp(parameters.group2, q, xq, yq, ctx),
 			ERR(REASON_OPENSSL));
 
-	TRY(tate_pairing_power(env, e, p, xq, yq, exponent, parameters.group1,
-					parameters.factor, ctx), ERR(REASON_PAIRING));
+	TRY(tate_pairing_power(env, e->x, e->y, p, xq, yq, exponent,
+					parameters.group1, parameters.factor, ctx),
+			ERR(REASON_PAIRING));
 
 	code = LIBLESS_OK;
 end:
@@ -164,7 +170,82 @@ end:
 	return code;
 }
 
-int libless_pairing_power(libless_t *env, BIGNUM *e, BIGNUM *pairing,
+int libless_pairing_compressed(libless_t *env, BIGNUM *e, EC_POINT *p,
+		EC_POINT *q, BIGNUM *exponent, libless_params_t parameters,
+		BN_CTX *ctx) {
+	BIGNUM *xq = NULL;
+	BIGNUM *yq = NULL;
+	int code;
+
+	code = LIBLESS_ERROR;
+
+	BN_CTX_start(ctx);
+	TRY(xq = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(yq = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+
+	TRY(EC_POINT_get_affine_coordinates_GFp(parameters.group2, q, xq, yq, ctx),
+			ERR(REASON_OPENSSL));
+
+	TRY(tate_pairing_power(env, e, NULL, p, xq, yq, exponent,
+					parameters.group1, parameters.factor, ctx),
+			ERR(REASON_PAIRING));
+
+	code = LIBLESS_OK;
+end:
+	BN_CTX_end(ctx);
+	return code;
+}
+
+int libless_pairing_power(libless_t *env, QUADRATIC *e, QUADRATIC *pairing,
+		BIGNUM *exponent, libless_params_t parameters, BN_CTX *ctx) {
+	BIGNUM *px = NULL;
+	BIGNUM *py = NULL;
+	BIGNUM *two = NULL;
+	BIGNUM *prime = NULL;
+	BN_MONT_CTX *mctx = NULL;
+	int code;
+
+	code = LIBLESS_ERROR;
+
+	BN_CTX_start(ctx);
+	TRY(px = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(py = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(two = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(mctx = BN_MONT_CTX_new(), ERR(REASON_MEMORY));
+
+	TRY(BN_set_word(two, 2), ERR(REASON_OPENSSL));
+
+	prime = parameters.prime;
+
+	TRY(BN_MONT_CTX_set(mctx, prime, ctx), ERR(REASON_OPENSSL));
+
+	TRY(BN_to_montgomery(px, pairing->x, mctx, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_to_montgomery(py, pairing->y, mctx, ctx), ERR(REASON_OPENSSL));
+
+	/* Compute Vm(2a). */
+	TRY(BN_mod_lshift1_quick(px, px, prime), ERR(REASON_OPENSSL));
+
+	TRY(lucas_sequence(env, e->x, e->y, px, exponent, prime, mctx, ctx),
+			ERR(REASON_LUCAS));
+
+	TRY(BN_from_montgomery(e->x, e->x, mctx, ctx), ERR(REASON_OPENSSL));
+
+	TRY(BN_mod_mul_montgomery(e->y, e->y, py, mctx, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_from_montgomery(e->y, e->y, mctx, ctx), ERR(REASON_OPENSSL));
+
+	/* Compute e = e/2. */
+	TRY(BN_mod_inverse(two, two, prime, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_mod_mul(e->x, two, e->x, prime, ctx), ERR(REASON_OPENSSL));
+
+	code = LIBLESS_OK;
+
+end:
+	BN_CTX_end(ctx);
+	BN_MONT_CTX_free(mctx);
+	return code;
+}
+
+int libless_pairing_power_compressed(libless_t *env, BIGNUM *e, BIGNUM *pairing,
 		BIGNUM *exponent, libless_params_t parameters, BN_CTX *ctx) {
 	BIGNUM *r = NULL;
 	BIGNUM *two = NULL;
@@ -190,7 +271,7 @@ int libless_pairing_power(libless_t *env, BIGNUM *e, BIGNUM *pairing,
 	/* Compute Vm(2a). */
 	TRY(BN_mod_lshift1_quick(r, r, prime), ERR(REASON_OPENSSL));
 
-	TRY(lucas_sequence(env, e, r, exponent, prime, mctx, ctx),
+	TRY(lucas_sequence(env, e, NULL, r, exponent, prime, mctx, ctx),
 			ERR(REASON_LUCAS));
 
 	TRY(BN_from_montgomery(e, e, mctx, ctx), ERR(REASON_OPENSSL));
@@ -207,7 +288,47 @@ end:
 	return code;
 }
 
-int libless_pairing_multiply(libless_t *env, BIGNUM *e1, BIGNUM *e2,
+int libless_pairing_multiply(libless_t *env, QUADRATIC *e, QUADRATIC *a,
+		QUADRATIC *b, libless_params_t parameters, BN_CTX *ctx) {
+	QUADRATIC *qa = NULL;
+	QUADRATIC *qb = NULL;
+	QUADRATIC *qe = NULL;
+	BIGNUM *prime = NULL;
+	BN_MONT_CTX *mctx = NULL;
+	int code;
+
+	code = LIBLESS_ERROR;
+
+	BN_CTX_start(ctx);
+	TRY(qa = QD_dup(a), ERR(REASON_MEMORY));
+	TRY(qb = QD_dup(b), ERR(REASON_MEMORY));
+	TRY(qe = QD_new(), ERR(REASON_MEMORY));
+	TRY(mctx = BN_MONT_CTX_new(), ERR(REASON_MEMORY));
+
+	prime = parameters.prime;
+	TRY(BN_MONT_CTX_set(mctx, prime, ctx), ERR(REASON_OPENSSL));
+
+	BN_to_montgomery(qa->x, qa->x, mctx, ctx);
+	BN_to_montgomery(qa->y, qa->y, mctx, ctx);
+	BN_to_montgomery(qb->x, qb->x, mctx, ctx);
+	BN_to_montgomery(qb->y, qb->y, mctx, ctx);
+
+	TRY(QD_mul(qe, qa, qb, prime, mctx, ctx), ERR(REASON_QUADRATIC));
+
+	BN_from_montgomery(e->x, qe->x, mctx, ctx);
+	BN_from_montgomery(e->y, qe->y, mctx, ctx);
+
+	code = LIBLESS_OK;
+end:
+	QD_free(qa);
+	QD_free(qb);
+	QD_free(qe);
+	BN_CTX_end(ctx);
+	BN_MONT_CTX_free(mctx);
+	return code;
+}
+
+int libless_pairing_multiply_compressed(libless_t *env, BIGNUM *e1, BIGNUM *e2,
 		BIGNUM *a, BIGNUM *b, libless_params_t parameters, BN_CTX *ctx) {
 	QUADRATIC *qa1 = NULL;
 	QUADRATIC *qa2 = NULL;
@@ -221,7 +342,7 @@ int libless_pairing_multiply(libless_t *env, BIGNUM *e1, BIGNUM *e2,
 	int code;
 
 	code = LIBLESS_ERROR;
-	
+
 	BN_CTX_start(ctx);
 	TRY(qa1 = QD_new(), ERR(REASON_MEMORY));
 	TRY(qa2 = QD_new(), ERR(REASON_MEMORY));
@@ -260,13 +381,49 @@ end:
 	return code;
 }
 
+int libless_pairing_inverse(libless_t *env, QUADRATIC *e, QUADRATIC *a,
+		libless_params_t parameters, BN_CTX *ctx) {
+	QUADRATIC *qe = NULL;
+	QUADRATIC *qa = NULL;
+	BIGNUM *prime = NULL;
+	BN_MONT_CTX *mctx = NULL;
+	int code;
+
+	code = LIBLESS_ERROR;
+
+	BN_CTX_start(ctx);
+	TRY(qe = QD_new(), ERR(REASON_MEMORY));
+	TRY(qa = QD_dup(a), ERR(REASON_MEMORY));
+	TRY(mctx = BN_MONT_CTX_new(), ERR(REASON_MEMORY));
+
+	prime = parameters.prime;
+	TRY(BN_MONT_CTX_set(mctx, prime, ctx), ERR(REASON_OPENSSL));
+
+	BN_to_montgomery(qa->x, qa->x, mctx, ctx);
+	BN_to_montgomery(qa->y, qa->y, mctx, ctx);
+
+	TRY(QD_inv(qe, qa, prime, mctx, ctx), ERR(REASON_QUADRATIC));
+
+	BN_from_montgomery(e->x, qe->x, mctx, ctx);
+	BN_from_montgomery(e->y, qe->y, mctx, ctx);
+
+	code = LIBLESS_OK;
+end:
+	QD_free(qe);
+	QD_free(qa);
+	BN_CTX_end(ctx);
+	BN_MONT_CTX_free(mctx);
+	return code;
+}
+
 
 /*============================================================================*/
 /* Private definitions                                                        */
 /*============================================================================*/
 
-static int lucas_sequence(libless_t *env, BIGNUM *r, BIGNUM *a, BIGNUM *n,
-		BIGNUM *p, BN_MONT_CTX *mctx, BN_CTX *ctx) {
+static int lucas_sequence(libless_t *env, BIGNUM *r1, BIGNUM *r2, BIGNUM *a,
+		BIGNUM *n, BIGNUM *p, BN_MONT_CTX *mctx, BN_CTX *ctx) {
+	BIGNUM *ta = NULL;			
 	BIGNUM *t0 = NULL;
 	BIGNUM *t1 = NULL;
 	BIGNUM *t2 = NULL;
@@ -276,12 +433,14 @@ static int lucas_sequence(libless_t *env, BIGNUM *r, BIGNUM *a, BIGNUM *n,
 	code = LIBLESS_ERROR;
 
 	BN_CTX_start(ctx);
+	TRY(ta = BN_CTX_get(ctx), ERR(REASON_OPENSSL));
 	TRY(t0 = BN_CTX_get(ctx), ERR(REASON_OPENSSL));
 	TRY(t1 = BN_CTX_get(ctx), ERR(REASON_OPENSSL));
 	TRY(t2 = BN_CTX_get(ctx), ERR(REASON_OPENSSL));
 
+	TRY(BN_copy(ta, a), ERR(REASON_OPENSSL));
 	TRY(BN_set_word(t0, 2), ERR(REASON_OPENSSL));
-	TRY(BN_copy(t1, a), ERR(REASON_OPENSSL));
+	TRY(BN_copy(t1, ta), ERR(REASON_OPENSSL));
 	TRY(BN_set_word(t2, 2), ERR(REASON_OPENSSL));
 	BN_to_montgomery(t0, t0, mctx, ctx);
 	BN_to_montgomery(t2, t2, mctx, ctx);
@@ -290,20 +449,39 @@ static int lucas_sequence(libless_t *env, BIGNUM *r, BIGNUM *a, BIGNUM *n,
 		if (BN_is_bit_set(n, i)) {
 			TRY(BN_mod_mul_montgomery(t0, t0, t1, mctx, ctx),
 					ERR(REASON_OPENSSL));
-			TRY(BN_mod_sub_quick(t0, t0, a, p), ERR(REASON_OPENSSL));
+			TRY(BN_mod_sub_quick(t0, t0, ta, p), ERR(REASON_OPENSSL));
 			TRY(BN_mod_mul_montgomery(t1, t1, t1, mctx, ctx),
 					ERR(REASON_OPENSSL));
 			TRY(BN_mod_sub_quick(t1, t1, t2, p), ERR(REASON_OPENSSL));
-		} else {
+		}
+		else {
 			TRY(BN_mod_mul_montgomery(t1, t0, t1, mctx, ctx),
 					ERR(REASON_OPENSSL));
-			TRY(BN_mod_sub_quick(t1, t1, a, p), ERR(REASON_OPENSSL));
+			TRY(BN_mod_sub_quick(t1, t1, ta, p), ERR(REASON_OPENSSL));
 			TRY(BN_mod_mul_montgomery(t0, t0, t0, mctx, ctx),
 					ERR(REASON_OPENSSL));
 			TRY(BN_mod_sub_quick(t0, t0, t2, p), ERR(REASON_OPENSSL));
 		}
 	}
-	TRY(BN_copy(r, t0), ERR(REASON_OPENSSL));
+	TRY(BN_copy(r1, t0), ERR(REASON_OPENSSL));
+
+	if (r2 != NULL) {
+		/* Compute t0 = a^2 - 4. */
+		TRY(BN_mod_mul_montgomery(t0, ta, ta, mctx, ctx), ERR(REASON_OPENSSL));
+		TRY(BN_mod_lshift1_quick(t2, t2, p), ERR(REASON_OPENSSL));
+		TRY(BN_mod_sub_quick(t0, t0, t2, p), ERR(REASON_OPENSSL));
+
+		BN_from_montgomery(t0, t0, mctx, ctx);
+		TRY(BN_mod_inverse(t2, t0, p, ctx), ERR(REASON_OPENSSL));
+		BN_to_montgomery(t2, t2, mctx, ctx);
+
+		/* Compute t0 = (2*t1-a*r0)/(a^2 - 4). */
+		TRY(BN_mod_mul_montgomery(t0, r1, ta, mctx, ctx), ERR(REASON_OPENSSL));
+		TRY(BN_mod_lshift1_quick(t1, t1, p), ERR(REASON_OPENSSL));
+		TRY(BN_mod_sub_quick(t1, t1, t0, p), ERR(REASON_OPENSSL));
+		TRY(BN_mod_mul_montgomery(t1, t1, t2, mctx, ctx), ERR(REASON_OPENSSL));
+		TRY(BN_copy(r2, t1), ERR(REASON_OPENSSL));
+	}
 
 	code = LIBLESS_OK;
 end:
@@ -370,7 +548,8 @@ static int point_doubling_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 		TRY(BN_mod_lshift1_quick(t1, t0, p), ERR(REASON_OPENSSL));
 		TRY(BN_mod_add_quick(t0, t0, t1, p), ERR(REASON_OPENSSL));
 		TRY(BN_mod_add_quick(t1, t0, a, p), ERR(REASON_OPENSSL));
-	} else {
+	}
+	else {
 		/* Compute t0 = -3 (mod p). */
 		TRY(BN_copy(t0, p), ERR(REASON_OPENSSL));
 		TRY(BN_sub_word(t0, 3), ERR(REASON_OPENSSL));
@@ -386,7 +565,8 @@ static int point_doubling_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 					ERR(REASON_OPENSSL));
 			TRY(BN_mod_lshift1_quick(t0, t1, p), ERR(REASON_OPENSSL));
 			TRY(BN_mod_add_quick(t1, t0, t1, p), ERR(REASON_OPENSSL));
-		} else {
+		}
+		else {
 			/* Compute t4 = zp^2, t1 = 3 * xp^2 + a * zp^4. */
 			TRY(BN_to_montgomery(a, a, mctx, ctx), ERR(REASON_OPENSSL));
 			TRY(BN_mod_mul_montgomery(t0, xp, xp, mctx, ctx),
@@ -407,7 +587,8 @@ static int point_doubling_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 	/* Compute zr = 2 * yp * zp. */
 	if (BN_is_one(zp)) {
 		TRY(BN_copy(t0, yp), ERR(REASON_OPENSSL));
-	} else {
+	}
+	else {
 		TRY(BN_mod_mul_montgomery(t0, yp, zp, mctx, ctx), ERR(REASON_OPENSSL));
 	}
 	TRY(BN_mod_lshift1_quick(zr, t0, p), ERR(REASON_OPENSSL));
@@ -526,7 +707,8 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 		/* Make t1 = xa, t2 = ya. */
 		TRY(BN_copy(t1, xa), ERR(REASON_OPENSSL));
 		TRY(BN_copy(t2, ya), ERR(REASON_OPENSSL));
-	} else {
+	}
+	else {
 		/* Compute t1 = xa * zb^2. */
 		TRY(BN_mod_mul_montgomery(t0, zb, zb, mctx, ctx), ERR(REASON_OPENSSL));
 		TRY(BN_mod_mul_montgomery(t1, xa, t0, mctx, ctx), ERR(REASON_OPENSSL));
@@ -539,7 +721,8 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 		/* Make t3 = xb and t4 = yb. */
 		TRY(BN_copy(t3, xb), ERR(REASON_OPENSSL));
 		TRY(BN_copy(t4, yb), ERR(REASON_OPENSSL));
-	} else {
+	}
+	else {
 		/* Compute t3 = xb * za^2. */
 		TRY(BN_mod_mul_montgomery(z3, za, za, mctx, ctx), ERR(REASON_OPENSSL));
 		TRY(BN_mod_mul_montgomery(t3, xb, z3, mctx, ctx), ERR(REASON_OPENSSL));
@@ -558,7 +741,8 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 			/* Point A = Point B. */
 			BN_CTX_end(ctx);
 			return point_doubling_line(env, r, line, a, xq, yq, group, ctx);
-		} else {
+		}
+		else {
 			/* Point at infinity. */
 			ERR(REASON_POINT_INFINITY);
 		}
@@ -571,15 +755,18 @@ static int point_addition_line(libless_t *env, EC_POINT *r, QUADRATIC *line,
 	if (BN_is_one(za) && BN_is_one(zb)) {
 		/* Make zr = t5. */
 		TRY(BN_copy(zr, t5), ERR(REASON_OPENSSL));
-	} else {
+	}
+	else {
 		if (BN_is_one(za)) {
 			/* Make t0 = zb. */
 			TRY(BN_copy(t0, zb), ERR(REASON_OPENSSL));
-		} else {
+		}
+		else {
 			if (BN_is_one(zb)) {
 				/* Make t0 = za. */
 				TRY(BN_copy(t0, za), ERR(REASON_OPENSSL));
-			} else {
+			}
+			else {
 				/* Compute t0 = za * zb. */
 				TRY(BN_mod_mul_montgomery(t0, za, zb, mctx, ctx),
 						ERR(REASON_OPENSSL));
@@ -637,9 +824,9 @@ end:
 	return code;
 }
 
-static int tate_pairing_power(libless_t *env, BIGNUM *e, EC_POINT *p,
-		BIGNUM *xq, BIGNUM *yq, BIGNUM *r, EC_GROUP *group, BIGNUM *factor,
-		BN_CTX *ctx) {
+static int tate_pairing_power(libless_t *env, BIGNUM *e1, BIGNUM *e2,
+		EC_POINT *p, BIGNUM *xq, BIGNUM *yq, BIGNUM *r, EC_GROUP *group,
+		BIGNUM *factor, BN_CTX *ctx) {
 	EC_POINT *point = NULL;
 	QUADRATIC *result = NULL;
 	QUADRATIC *line = NULL;
@@ -724,21 +911,28 @@ static int tate_pairing_power(libless_t *env, BIGNUM *e, EC_POINT *p,
 	/* result = conj(result) * result^(-1). */
 	TRY(QD_mul(result, result, inv, prime, mctx, ctx), ERR(REASON_QUADRATIC));
 
-	TRY(BN_mod_lshift1_quick(e, result->x, prime), ERR(REASON_OPENSSL));
+	TRY(BN_mod_lshift1_quick(e1, result->x, prime), ERR(REASON_OPENSSL));
 
 	TRY(BN_hex2bn(&power, LAST_POWER), ERR(REASON_CURVE_PARAMETERS));
 
-	TRY(lucas_sequence(env, e, e, power, prime, mctx, ctx), ERR(REASON_LUCAS));
+	TRY(lucas_sequence(env, e1, e2, e1, power, prime, mctx, ctx),
+			ERR(REASON_LUCAS));
 
 	if (r != NULL) {
-		TRY(lucas_sequence(env, e, e, r, prime, mctx, ctx), ERR(REASON_LUCAS));
+		TRY(lucas_sequence(env, e1, e2, e1, r, prime, mctx, ctx),
+				ERR(REASON_LUCAS));
 	}
 
-	TRY(BN_from_montgomery(e, e, mctx, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_from_montgomery(e1, e1, mctx, ctx), ERR(REASON_OPENSSL));
+
+	if (e2 != NULL) {
+		BN_mod_mul_montgomery(e2, e2, result->y, mctx, ctx);
+		TRY(BN_from_montgomery(e2, e2, mctx, ctx), ERR(REASON_OPENSSL));
+	}
 
 	/* Compute e = e/2. */
 	TRY(BN_mod_inverse(two, two, prime, ctx), ERR(REASON_OPENSSL));
-	TRY(BN_mod_mul(e, two, e, prime, ctx), ERR(REASON_OPENSSL));
+	TRY(BN_mod_mul(e1, two, e1, prime, ctx), ERR(REASON_OPENSSL));
 
 	code = LIBLESS_OK;
 end:
@@ -776,7 +970,11 @@ int pairing_expand(libless_t *env, QUADRATIC *e1, QUADRATIC *e2,
 	/* Compute sqrt(1 - a^2) = (1 - a^2)^((p+1)/4). */
 	TRY(BN_mod_sqr(e1->y, pairing, prime, ctx), ERR(REASON_OPENSSL));
 	TRY(BN_mod_sub_quick(e1->y, one, e1->y, prime), ERR(REASON_OPENSSL));
-	TRY(BN_mod_exp_mont(e1->y, e1->y, p, prime, ctx, NULL), ERR(REASON_OPENSSL));
+	TRY(BN_mod_exp_mont(e1->y, e1->y, p, prime, ctx, NULL),
+			ERR(REASON_OPENSSL));
+	printf("e1 -> y = ");
+	BN_print_fp(stdout, e1->y);
+	printf("\n");
 
 	TRY(BN_copy(e1->x, pairing), ERR(REASON_OPENSSL));
 
@@ -784,6 +982,10 @@ int pairing_expand(libless_t *env, QUADRATIC *e1, QUADRATIC *e2,
 		/* Make e2 = (e2->x, -e1->y). */
 		TRY(BN_copy(e2->x, e1->x), ERR(REASON_OPENSSL));
 		TRY(BN_mod_sub_quick(e2->y, prime, e1->y, prime), ERR(REASON_OPENSSL));
+		printf("e2 -> y = ");
+		BN_print_fp(stdout, e2->y);
+		printf("\n");
+
 	}
 
 	code = LIBLESS_OK;

@@ -112,8 +112,7 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 		do {
 			/* First, generate a random x value. */
 			TRY(BN_rand(x, P_SIZE_BITS, -1, 0), ERR(REASON_OPENSSL));
-		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0,
-						ctx));
+		} while (!EC_POINT_set_compressed_coordinates_GFp(group, g, x, 0, ctx));
 
 		/* Multiply the random point by the cofactor. */
 		TRY(EC_POINT_mul(group, g, NULL, g, h, ctx), ERR(REASON_OPENSSL));
@@ -158,8 +157,7 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 
 	TRY(parameters->group1 = EC_GROUP_dup(group), ERR(REASON_OPENSSL));
 	TRY(parameters->group2 = EC_GROUP_dup(twisted), ERR(REASON_OPENSSL));
-	TRY(parameters->public = EC_POINT_dup(public, group),
-			ERR(REASON_OPENSSL));
+	TRY(parameters->public = EC_POINT_dup(public, group), ERR(REASON_OPENSSL));
 	TRY(parameters->generator1 = EC_POINT_dup(g, group), ERR(REASON_OPENSSL));
 	TRY(parameters->prime = BN_dup(p), ERR(REASON_OPENSSL));
 	TRY(parameters->factor = BN_dup(r), ERR(REASON_OPENSSL));
@@ -168,7 +166,7 @@ int libless_encryption_setup(libless_t *env, libless_params_t *parameters,
 end:
 	EC_POINT_free(g);
 	EC_POINT_free(gt);
-	EC_POINT_free(public);	
+	EC_POINT_free(public);
 	EC_GROUP_free(group);
 	EC_GROUP_free(twisted);
 	BN_CTX_end(ctx);
@@ -333,8 +331,8 @@ int libless_encrypt(libless_t *env, libless_ciphertext_t *encrypted,
 					r, ctx), ERR(REASON_OPENSSL));
 
 	/* Compute the pairing. */
-	TRY(libless_pairing(env, e, parameters.public, id_point, r, parameters,
-					ctx), ERR(REASON_PAIRING));
+	TRY(libless_pairing_compressed(env, e, parameters.public, id_point, r,
+					parameters, ctx), ERR(REASON_PAIRING));
 
 	/* Hash the image, the public key and the pairing result. */
 	TRY(EC_POINT_point2oct(parameters.group1, image,
@@ -441,7 +439,7 @@ int libless_decrypt(libless_t *env, unsigned char *out, int *out_len,
 					POINT_CONVERSION_COMPRESSED, h1_bin + POINT_SIZE_BYTES,
 					h1_len - POINT_SIZE_BYTES, ctx), ERR(REASON_OPENSSL));
 
-	TRY(libless_pairing(env, e, image, private_key.partial, NULL,
+	TRY(libless_pairing_compressed(env, e, image, private_key.partial, NULL,
 					parameters, ctx), ERR(REASON_PAIRING));
 
 	TRY(BN_bn2bin(e, h1_bin + 2 * POINT_SIZE_BYTES), ERR(REASON_OPENSSL));

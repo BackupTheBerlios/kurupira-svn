@@ -62,7 +62,7 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 	BIGNUM *n = NULL;
 	BIGNUM *nt = NULL;
 	BIGNUM *r = NULL;
-	BIGNUM *e = NULL;
+	QUADRATIC *e = NULL;
 	BIGNUM *h = NULL;
 	BIGNUM *ht = NULL;
 	BIGNUM *x = NULL;
@@ -85,7 +85,7 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(p = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(e = QD_new(), ERR(REASON_MEMORY));
 	TRY(bt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(nt = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(ht = BN_CTX_get(ctx), ERR(REASON_MEMORY));
@@ -179,7 +179,7 @@ int libless_signature_setup(libless_t *env, libless_params_t *parameters,
 	TRY(libless_pairing(env, e, g, gt, NULL, *parameters, ctx),
 			ERR(REASON_PAIRING));
 
-	TRY(parameters->pairing = BN_dup(e), ERR(REASON_OPENSSL));
+	TRY(parameters->pairing = QD_dup(e), ERR(REASON_OPENSSL));
 
 	code = LIBLESS_OK;
 end:
@@ -188,6 +188,7 @@ end:
 	EC_POINT_free(public);
 	EC_GROUP_free(group);
 	EC_GROUP_free(twisted);
+	QD_free(e);
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	return code;
@@ -248,7 +249,7 @@ int libless_signature_set_public(libless_t *env, libless_public_t *public_key,
 
 	TRY(ctx = BN_CTX_new(), ERR(REASON_MEMORY));
 
-	TRY(public_key->pairing = BN_new(), ERR(REASON_MEMORY));
+	TRY(public_key->pairing = QD_new(), ERR(REASON_MEMORY));
 
 	/* The public key is a power of a pairing. So, we have to compute this power
 	 * using the special function. */
@@ -285,7 +286,7 @@ int libless_sign(libless_t *env, libless_signature_t *signature,
 		libless_params_t parameters) {
 	EC_POINT *image = NULL;
 	BIGNUM *k = NULL;
-	BIGNUM *r = NULL;
+	QUADRATIC *r = NULL;
 	BIGNUM *h = NULL;
 	BIGNUM *e = NULL;
 	BN_CTX *ctx = NULL;
@@ -302,7 +303,7 @@ int libless_sign(libless_t *env, libless_signature_t *signature,
 	BN_CTX_start(ctx);
 
 	TRY(k = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(r = QD_new(), ERR(REASON_MEMORY));
 	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 
@@ -328,9 +329,9 @@ int libless_sign(libless_t *env, libless_signature_t *signature,
 	 * a integer. */
 	memcpy(h_bin, in, in_len);
 	memcpy(h_bin + in_len, id, id_len);
-	TRY(BN_bn2bin(public_key.pairing, h_bin + in_len + id_len),
+	TRY(BN_bn2bin(public_key.pairing->x, h_bin + in_len + id_len),
 			ERR(REASON_OPENSSL));
-	TRY(BN_bn2bin(r, h_bin + in_len + id_len + P_SIZE_BYTES),
+	TRY(BN_bn2bin(r->x, h_bin + in_len + id_len + P_SIZE_BYTES),
 			ERR(REASON_OPENSSL));
 	TRY(libless_hash_to_integer(env, h, h_bin, h_len, parameters.factor),
 			ERR(REASON_HASH));
@@ -361,6 +362,7 @@ end:
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	EC_POINT_free(image);
+	QD_free(r);
 	free(h_bin);
 	return code;
 }
@@ -371,13 +373,11 @@ int libless_verify(libless_t *env, int *verified,
 		libless_params_t parameters) {
 	EC_POINT *image = NULL;
 	EC_POINT *id_point = NULL;
-	BIGNUM *h1 = NULL;
-	BIGNUM *h2 = NULL;
+	BIGNUM *h = NULL;
 	BIGNUM *hash = NULL;
-	BIGNUM *e = NULL;
-	BIGNUM *r = NULL;
-	BIGNUM *r1 = NULL;
-	BIGNUM *r2 = NULL;
+	QUADRATIC *e = NULL;
+	QUADRATIC *r = NULL;
+	QUADRATIC *m = NULL;
 	BN_CTX *ctx = NULL;
 	unsigned char *h_bin = NULL;
 	int h_len;
@@ -388,13 +388,11 @@ int libless_verify(libless_t *env, int *verified,
 
 	BN_CTX_start(ctx);
 
-	TRY(h1 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(h2 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
 	TRY(hash = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(r = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(r1 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(r2 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(e = QD_new(), ERR(REASON_MEMORY));
+	TRY(r = QD_new(), ERR(REASON_MEMORY));
+	TRY(m = QD_new(), ERR(REASON_MEMORY));
 
 	h_len = in_len + id_len + 2 * P_SIZE_BYTES;
 
@@ -412,10 +410,10 @@ int libless_verify(libless_t *env, int *verified,
 			ERR(REASON_OPENSSL));
 
 	/* Compute H(ID_A)Q + Q_0. */
-	TRY(libless_hash_to_integer(env, h1, id, id_len, parameters.factor),
+	TRY(libless_hash_to_integer(env, h, id, id_len, parameters.factor),
 			ERR(REASON_HASH));
 
-	TRY(EC_POINT_mul(parameters.group2, id_point, h1, NULL, NULL, ctx),
+	TRY(EC_POINT_mul(parameters.group2, id_point, h, NULL, NULL, ctx),
 			ERR(REASON_OPENSSL));
 
 	TRY(EC_POINT_add(parameters.group2, id_point, id_point,
@@ -427,28 +425,25 @@ int libless_verify(libless_t *env, int *verified,
 	TRY(libless_pairing_power(env, r, public_key.pairing, hash, parameters,
 					ctx), ERR(REASON_PAIRING));
 
-	TRY(libless_pairing_multiply(env, r1, r2, e, r, parameters, ctx),
+	TRY(libless_pairing_inverse(env, r, r, parameters, ctx),
+			ERR(REASON_PAIRING));
+
+	TRY(libless_pairing_multiply(env, m, e, r, parameters, ctx),
 			ERR(REASON_PAIRING));
 
 	/* Hash the message, the identity, the public key and the session key to
 	 * an integer. */
 	memcpy(h_bin, in, in_len);
 	memcpy(h_bin + in_len, id, id_len);
-	TRY(BN_bn2bin(public_key.pairing, h_bin + in_len + id_len),
+	TRY(BN_bn2bin(public_key.pairing->x, h_bin + in_len + id_len),
 			ERR(REASON_OPENSSL));
-	TRY(BN_bn2bin(r1, h_bin + in_len + id_len + P_SIZE_BYTES),
+	TRY(BN_bn2bin(m->x, h_bin + in_len + id_len + P_SIZE_BYTES),
 			ERR(REASON_OPENSSL));
-	TRY(libless_hash_to_integer(env, h1, h_bin, h_len, parameters.factor),
-			ERR(REASON_HASH));
-
-	memset(h_bin + in_len + id_len + P_SIZE_BYTES, 0, P_SIZE_BYTES);
-	TRY(BN_bn2bin(r2, h_bin + in_len + id_len + P_SIZE_BYTES),
-			ERR(REASON_OPENSSL));
-	TRY(libless_hash_to_integer(env, h2, h_bin, h_len, parameters.factor),
+	TRY(libless_hash_to_integer(env, h, h_bin, h_len, parameters.factor),
 			ERR(REASON_HASH));
 
 	/* Compare the image received and the image computed. */
-	if (BN_cmp(h1, hash) == 0 || BN_cmp(h2, hash) == 0) {
+	if (BN_cmp(h, hash) == 0) {
 		*verified = 1;
 	}
 	else {
@@ -461,6 +456,9 @@ end:
 	BN_CTX_free(ctx);
 	EC_POINT_free(id_point);
 	EC_POINT_free(image);
+	QD_free(e);
+	QD_free(r);
+	QD_free(m);
 	free(h_bin);
 	return code;
 }

@@ -39,7 +39,7 @@
 #include "libless_types.h"
 #include "openssl/engine.h"
 
-#define N 1000
+#define N 10
 
 /*============================================================================*/
 /* Public definitions                                                         */
@@ -164,6 +164,7 @@ end:
 		printf("Test succeded.\n");
 	}
 
+	libless_aggregate_clean(&aggregate);
 	libless_private_clean(&private_key);
 	libless_partial_clean(&partial_key);
 	libless_secret_clean(&secret);

@@ -41,7 +41,6 @@
 
 #include "libless.h"
 #include "libless_error.h"
-#include "libless_quadratic.h"
 #include "libless_pairing.h"
 #include "libless_types.h"
 #include "libless_timing.h"

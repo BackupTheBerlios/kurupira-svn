@@ -31,8 +31,8 @@
 
 #include <stdio.h>
 
-#include "libless_types.h"
 #include "libless.h"
+#include "libless_types.h"
 #include "libless_error.h"
 
 /*============================================================================*/
@@ -56,7 +56,7 @@ void libless_parameters_clean(libless_params_t *parameters) {
 	EC_POINT_free(parameters->generator1);
 	EC_POINT_free(parameters->generator2);
 	EC_POINT_free(parameters->public);
-	BN_free(parameters->pairing);
+	QD_free(parameters->pairing);
 	BN_free(parameters->prime);
 	BN_free(parameters->factor);
 }
@@ -93,7 +93,7 @@ void libless_public_init(libless_public_t *public_key) {
 }
 
 void libless_public_clean(libless_public_t *public_key) {
-	BN_free(public_key->pairing);
+	QD_free(public_key->pairing);
 	EC_POINT_free(public_key->point);
 	public_key->pairing = NULL;
 	public_key->point = NULL;

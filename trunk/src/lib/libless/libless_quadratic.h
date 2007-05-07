@@ -29,7 +29,7 @@
  * @ingroup libless
  */
 
-#ifndef _LIBLESS_QUADRATIC_H
+#ifndef _LIBLESS_QUADRATIC_H_
 	#define _LIBLESS_QUADRATIC_H_
 	
 	#include <openssl/bn.h>
@@ -48,6 +48,14 @@
 	 * @returns A quadratic extension element if no error occurs, NULL otherwise.
 	 */
 	QUADRATIC *QD_new();
+	
+	/**
+	 * Duplicates a quadratic extension element.
+	 * 
+	 * @param a				- the element to duplicate
+	 * @returns A quadratic extension element if no error occurs, NULL otherwise.
+	 */
+	 QUADRATIC *QD_dup(QUADRATIC *a);
 
 	/**
 	 * Computes the square of a quadratic extension element.
@@ -107,6 +115,24 @@
 	 * @returns 1 if the condition is true, 0 otherwise.
 	 */
 	int QD_is_zero(QUADRATIC *a);
+
+	/**
+	 * Copies one quadratic extension field to another.
+	 * 
+	 * @param[out] to		- the destination
+	 * @param[in] from		- the source
+	 * @returns LIBLESS_OK if no error occurs, LIBLESS_ERROR otherwise.
+	 */
+	int QD_copy(QUADRATIC *to, QUADRATIC *from);
+
+	/**
+	 * Compares two quadratic extension elements for equality.
+	 * 
+	 * @param[in] a			- the first quadratic extension element
+	 * @param[in] b			- the second quadratic extension element
+	 * @returns 1 if the elements are equal, 0 otherwise
+	 */
+	int QD_equal(QUADRATIC *a, QUADRATIC *b);
 
 	/**
 	 * Frees the memory allocated to the quadratic extension element.

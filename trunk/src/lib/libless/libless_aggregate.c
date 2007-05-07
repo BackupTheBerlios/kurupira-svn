@@ -381,7 +381,12 @@ end:
 	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	EC_POINT_free(image);
+	EC_POINT_free(image2);
+	EC_POINT_free(hash);
+	EC_POINT_free(id_point);
+	EC_POINT_free(id_point2);
 	free(h_bin);
+	free(image_bin);
 	return code;
 }
 
@@ -467,10 +472,10 @@ int libless_aggregate_batch_verify(libless_t *env, int *verified,
 
 	}
 
-	TRY(libless_pairing(env, e1, parameters.generator1, image2, NULL,
+	TRY(libless_pairing_compressed(env, e1, parameters.generator1, image2, NULL,
 					parameters, ctx), ERR(REASON_PAIRING));
 
-	TRY(libless_pairing(env, e2, hash2, id_point, NULL, parameters, ctx),
+	TRY(libless_pairing_compressed(env, e2, hash2, id_point, NULL, parameters, ctx),
 			ERR(REASON_OPENSSL));
 
 	/* Compare the image received and the image computed. */
@@ -487,6 +492,9 @@ end:
 	BN_CTX_free(ctx);
 	EC_POINT_free(id_point);
 	EC_POINT_free(image);
+	EC_POINT_free(image2);
+	EC_POINT_free(hash);
+	EC_POINT_free(hash2);
 	free(h_bin);
 	return code;
 }
@@ -501,9 +509,9 @@ int libless_aggregate_verify(libless_t *env, int *verified,
 	EC_POINT *hash2 = NULL;
 	EC_POINT *id_point = NULL;
 	BIGNUM *h = NULL;
-	BIGNUM *e = NULL;
-	BIGNUM *e1 = NULL;
-	BIGNUM *e2 = NULL;
+	QUADRATIC *e = NULL;
+	QUADRATIC *e1 = NULL;
+	QUADRATIC *e2 = NULL;
 	BN_CTX *ctx = NULL;
 	unsigned char *h_bin = NULL;
 	int h_len;
@@ -516,9 +524,9 @@ int libless_aggregate_verify(libless_t *env, int *verified,
 	BN_CTX_start(ctx);
 
 	TRY(h = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(e = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(e1 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
-	TRY(e2 = BN_CTX_get(ctx), ERR(REASON_MEMORY));
+	TRY(e = QD_new(), ERR(REASON_MEMORY));
+	TRY(e1 = QD_new(), ERR(REASON_MEMORY));
+	TRY(e2 = QD_new(), ERR(REASON_MEMORY));
 
 	h_len = in_len + 2 * POINT_SIZE_BYTES;
 
@@ -569,10 +577,10 @@ int libless_aggregate_verify(libless_t *env, int *verified,
 				ERR(REASON_OPENSSL));
 
 		if (i == 0) {
-			TRY(BN_copy(e2, e), ERR(REASON_OPENSSL));
+			TRY(QD_copy(e2, e), ERR(REASON_OPENSSL));
 		}
 		else {
-			TRY(libless_pairing_multiply(env, e2, NULL, e2, e, parameters,
+			TRY(libless_pairing_multiply(env, e2, e2, e, parameters,
 							ctx), ERR(REASON_PAIRING));
 		}
 	}
@@ -581,7 +589,7 @@ int libless_aggregate_verify(libless_t *env, int *verified,
 					parameters, ctx), ERR(REASON_PAIRING));
 
 	/* Compare the image received and the image computed. */
-	if (BN_cmp(e1, e2) == 0) {
+	if (QD_equal(e1, e2)) {
 		*verified = 1;
 	}
 	else {
@@ -594,6 +602,12 @@ end:
 	BN_CTX_free(ctx);
 	EC_POINT_free(id_point);
 	EC_POINT_free(image);
+	EC_POINT_free(image2);
+	EC_POINT_free(hash);
+	EC_POINT_free(hash2);
+	QD_free(e);
+	QD_free(e1);
+	QD_free(e2);
 	free(h_bin);
 	return code;
 }

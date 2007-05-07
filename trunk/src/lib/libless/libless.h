@@ -38,8 +38,6 @@
 
 	#include <liberror.h>
 
-	#include "libless_types.h"
-
 	/**
 	 * Constant indicating success.
 	 */
@@ -52,7 +50,7 @@
 
 	#ifdef WITH_SUPERSINGULAR
 
-		#include "libless_curvess.h"
+		#include "libless_curve_singular.h"
 
 	#else
 
